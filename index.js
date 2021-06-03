@@ -8,18 +8,20 @@ require('dotenv').config()
 
 const isValidPostUserRequest = require('./src/validators/isValidPostUserRequest')
 const getUserWithoutPassword = require('./src/utils/getUserWithoutPassword')
+const { logger } = require('./src/utils/log')
+
 const { UserModel } = require('./src/models')
 
 mongoose.connect(
     `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}/${process.env.DB_NAME}?retryWrites=true&w=majority`,
     { useNewUrlParser: true, useUnifiedTopology: true },
     () => {
-        console.log('connected')
+        logger('connected')
     }
 )
 
 const db = mongoose.connection
-db.on('error', console.error.bind(console, 'connection error:'))
+db.on('error', () => logger('error'))
 db.once('open', function () {
     const app = express()
 
@@ -38,27 +40,35 @@ db.once('open', function () {
             }).exec()
 
             if (existedUser) {
+                logger(
+                    'email already exist = ',
+                    getUserWithoutPassword(existedUser)
+                )
                 res.send({
                     error: true,
                     errorMessage: 'user with same login/email already exist',
                 })
-            }
-
-            const hash = await bcrypt.hash(password, saltRounds)
-            const createdUser = await UserModel.create({
-                name: login,
-                password: hash,
-                email,
-            })
-
-            if (createdUser) {
-                res.send({
-                    error: false,
-                    data: getUserWithoutPassword(createdUser),
+            } else {
+                const hash = await bcrypt.hash(password, saltRounds)
+                const createdUser = await UserModel.create({
+                    name: login,
+                    password: hash,
+                    email,
                 })
+
+                if (createdUser) {
+                    logger(
+                        'userCreated = ',
+                        getUserWithoutPassword(createdUser)
+                    )
+                    res.send({
+                        error: false,
+                        data: getUserWithoutPassword(createdUser),
+                    })
+                }
             }
         } else {
-            console.log('wrong reqBody')
+            logger('wrong reqBody')
         }
     })
 
@@ -75,7 +85,7 @@ db.once('open', function () {
             )
 
             if (authorized) {
-                console.log('success login', login)
+                logger('success login', login)
                 res.send({
                     data: getUserWithoutPassword(existedUser),
                 })
@@ -97,7 +107,19 @@ db.once('open', function () {
         res.send({ data: 'OK' })
     })
 
+    app.delete('/user/:id', async (req, res) => {
+        const { id } = req.params
+        logger('delete user/:id = ', id)
+
+        const result = await UserModel.findByIdAndDelete(id)
+        logger('delete result = ', result)
+        res.send({
+            error: false,
+            data: result,
+        })
+    })
+
     app.listen(port, () => {
-        console.log(`app start on port ${port}`)
+        logger(`app start on port ${port}`)
     })
 })
